@@ -1,5 +1,7 @@
 <html>
   <head>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <style>
       #results {
         position: fixed;
@@ -39,84 +41,70 @@
     <div id="results"></div>
 
     <script>
-      // Access camera
+      const results = document.getElementById("results");
+      let model;
       var video = document.querySelector("#videoElement");
-      if (navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices
-          .getUserMedia({ video: true })
-          .then(function (stream) {
+
+      // Access camera async func
+      async function setupCamera() {
+        if (navigator.mediaDevices.getUserMedia) {
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+            });
             video.srcObject = stream;
-          })
-          .catch(function (err) {
-            console.log("Something went wrong!");
-          });
+          } catch (err) {
+            console.log("Error accessing the camera: ", err);
+          }
+        }
+      }
+
+      // model loading async function
+      async function loadModel() {
+        model = await cocoSsd.load();
+        console.log("Model loaded.");
       }
 
       // We only get to work when the vision button is clicked
       document
         .querySelector("#vision_button")
-        .addEventListener("click", (evt) => {
-          // extract image as base64, scale it down to reduce data transfer speed
-          var scale = 0.25;
+        .addEventListener("click", async () => {
+          if (!model) {
+            alert("Model not loaded yet. Wait uuuuuup!");
+            return;
+          }
+
+          // var scale = 0.25;
           var canvas = document.createElement("canvas");
-          canvas.width = video.videoWidth * scale;
-          canvas.height = video.videoHeight * scale;
+          // canvas.width = video.videoWidth * scale;
+          // canvas.height = video.videoHeight * scale;
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
           canvas
             .getContext("2d")
             .drawImage(video, 0, 0, canvas.width, canvas.height);
 
-          // dataUrl contains base64 version of image
-          var dataUrl = canvas.toDataURL();
+          // tensorflow's version of detection
+          var detections = await model.detect(canvas);
 
-          // Send image to google to analyze
-          // Documentation of the annotate feature: https://cloud.google.com/vision/docs/reference/rest/v1/images/annotate
-          fetch(
-            "https://vision.googleapis.com/v1/images:annotate?key=AIzaSyBRq6t4jWopctrO3CKh479gvp7RO7UbMK4",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                requests: [
-                  {
-                    features: {
-                      type: "OBJECT_LOCALIZATION",
-                    },
-                    image: {
-                      // have to extract only the image data from dataURL
-                      content: dataUrl.substring(
-                        "data:image/png;base64,".length
-                      ),
-                    },
-                  },
-                ],
-              }),
-            }
-          )
-            .then((resp) => {
-              return resp.json();
-            })
-            .then((json) => {
-              // Simply output the response
-              console.log(json);
-              results.innerHTML = "";
-              json.responses[0].localizedObjectAnnotations.forEach(
-                (annotation) => {
-                  let description = document.createElement("span");
-                  let score = document.createElement("span");
+          console.log(detections);
 
-                  let div = document.createElement("div");
-                  description.innerText = annotation.name;
-                  score.innerText = annotation.score;
-
-                  div.append(description, score);
-
-                  results.append(div);
-                }
-              );
-            });
+          // Show result
+          results.innerHTML = "";
+          detections.forEach((detection) => {
+            const description = document.createElement("span");
+            const score = document.createElement("span");
+            description.innerText = `${detection.class}`;
+            score.innerText = ` (${(detection.score * 100).toFixed(2)}%)`;
+            const div = document.createElement("div");
+            div.append(description, score);
+            results.append(div);
+          });
         });
+
+      // Initialize camera and load model
+      setupCamera();
+      loadModel();
     </script>
   </body>
 </html>
